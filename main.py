@@ -30,26 +30,194 @@ class CPU:
         self.symbols = {}
 
     def load_program(self, assembly_code):
-        """Monta o código assembly e carrega na memória."""
-        # TODO: Implementar a lógica de montagem (assembler)
-        # Por enquanto, apenas carrega os bytes diretamente na memória
+        """Monta o código assembly e carrega na memória (duas passagens)."""
+
+        # Primeira Passagem: Coletar rótulos
         address = 0
-        for line in assembly_code.splitlines():
+        code_mode = False
+        data_mode = False
+
+        for line_number, line in enumerate(assembly_code.splitlines(), 1):
             line = line.strip()
             if not line or line.startswith(';'):
-                continue  # Ignora linhas vazias e comentários
+                continue
 
             parts = line.split()
-            if len(parts) > 1 and parts[1].startswith('#'):
+            label = None
+            instruction = None
+            operand = None
+
+            if len(parts) >= 1 and parts[0].endswith(':'):
+                label = parts[0][:-1]
+                if len(parts) > 1:
+                    instruction = parts[1]
+                    if len(parts) > 2:
+                        operand = parts[2]
+                else:
+                    instruction = None
+            elif len(parts) >= 1:
+                instruction = parts[0]
+                if len(parts) > 1:
+                    operand = parts[1]
+
+            if instruction == '.CODE':
+                code_address = int(operand[1:], 16) if operand else 0
+                address = code_address
+                code_mode = True
+                data_mode = False
+            elif instruction == '.ENDCODE':
+                if not code_mode:
+                    print(f"Erro na linha {line_number}: .ENDCODE sem .CODE correspondente.")
+                    return False
+                code_mode = False
+            elif instruction == '.DATA':
+                data_address = int(operand[1:], 16) if operand else 0
+                address = data_address
+                data_mode = True
+                code_mode = False
+            elif instruction == '.ENDDATA':
+                if not data_mode:
+                    print(f"Erro na linha {line_number}: .ENDDATA sem .DATA correspondente.")
+                    return False
+                data_mode = False
+            elif instruction == 'ORG':
+                address = int(operand[1:], 16)
+            elif instruction == 'DB':
+                if label:
+                    self.symbols[label] = address  # Define rótulo para DB
+                address += 1
+            elif instruction:
+                if label:
+                    self.symbols[label] = address  # Define rótulo para instruções
+                address += 2 if operand else 1
+
+        # Segunda Passagem: Gerar código de máquina
+        address = 0
+        code_mode = False
+        data_mode = False
+
+        for line_number, line in enumerate(assembly_code.splitlines(), 1):
+            line = line.strip()
+            if not line or line.startswith(';'):
+                continue
+
+            parts = line.split()
+            label = None
+            instruction = None
+            operand = None
+
+            if len(parts) >= 1 and parts[0].endswith(':'):
+                label = parts[0][:-1]
+                if len(parts) > 1:
+                    instruction = parts[1]
+                    if len(parts) > 2:
+                        operand = parts[2]
+                else:
+                    instruction = None
+            elif len(parts) >= 1:
+                instruction = parts[0]
+                if len(parts) > 1:
+                    operand = parts[1]
+
+            if instruction == '.CODE':
+                code_address = int(operand[1:], 16) if operand else 0
+                address = code_address
+                code_mode = True
+                data_mode = False
+            elif instruction == '.ENDCODE':
+                code_mode = False
+            elif instruction == '.DATA':
+                data_address = int(operand[1:], 16) if operand else 0
+                address = data_address
+                data_mode = True
+                code_mode = False
+            elif instruction == '.ENDDATA':
+                data_mode = False
+            elif instruction == 'ORG':
+                address = int(operand[1:], 16)
+            elif instruction == 'DB':
                 try:
-                    value = int(parts[1][1:], 16)  # Converte para inteiro (base 16)
-                    self.memory[address] = value & 0xFF  # Garante que caiba em 1 byte
+                    value = int(operand[1:], 16) if operand and operand.startswith('#') else self.symbols.get(operand)
+                    if value is None:
+                        print(f"Erro na linha {line_number}: Rótulo não definido: {operand}")
+                        return False
+                    self.memory[address] = value & 0xFF
                     address += 1
                 except ValueError:
-                    print(f"Erro: Valor inválido: {parts[1]}")
+                    print(f"Erro na linha {line_number}: Valor inválido: {operand}")
                     return False
+            elif instruction:
+                if not code_mode:
+                    print(f"Erro na linha {line_number}: Instrução fora da seção .CODE.")
+                    return False
+
+                opcode = self.get_opcode(instruction)
+                if opcode is None:
+                    print(f"Erro na linha {line_number}: Instrução inválida: {instruction}")
+                    return False
+
+                mode = self.get_addressing_mode(operand)
+                if mode is None and operand is not None:
+                    print(f"Erro na linha {line_number}: Modo de endereçamento inválido: {operand}")
+                    return False
+
+                first_byte = (opcode << 2) | (mode if mode is not None else 0)
+
+                self.memory[address] = first_byte & 0xFF
+                address += 1
+
+                if operand:
+                    try:
+                        if operand.startswith('#'):
+                            value = int(operand[1:], 16)
+                        elif operand.endswith(',I'):
+                            value = int(operand[:-2], 16) if operand[:-2].startswith('#') else self.symbols.get(
+                                operand[:-2])
+                        elif operand.endswith(',R'):
+                            value = int(operand[:-2], 16) if operand[:-2].startswith('#') else self.symbols.get(
+                                operand[:-2])
+                        else:
+                            value = self.symbols.get(operand)
+                        if value is None:
+                            print(f"Erro na linha {line_number}: Rótulo não definido: {operand}")
+                            return False
+                        self.memory[address] = value & 0xFF
+                        address += 1
+                    except ValueError:
+                        print(f"Erro na linha {line_number}: Valor inválido: {operand}")
+                        return False
+
+        if code_mode:
+            print(f"Erro: .CODE não foi finalizado com .ENDCODE.")
+            return False
+        if data_mode:
+            print(f"Erro: .DATA não foi finalizado com .ENDDATA.")
+            return False
+
         return True
 
+    def get_opcode(self, instruction):
+        """Retorna o opcode da instrução."""
+        opcodes = {
+            "NOT": 0x0, "STA": 0x1, "LDA": 0x2, "ADD": 0x3,
+            "OR": 0x4, "AND": 0x5, "JMP": 0x8, "JC": 0x9,
+            "JV": 0xA, "JN": 0xB, "JZ": 0xC, "JSR": 0xD,
+            "RTS": 0xE, "HLT": 0xF
+        }
+        return opcodes.get(instruction)
+
+    def get_addressing_mode(self, operand):
+        """Retorna o modo de endereçamento do operando."""
+        if operand is None:
+            return None
+        if operand.startswith('#'):
+            return 0x0  # Imediato
+        elif operand.endswith(',I'):
+            return 0x2  # Indireto
+        elif operand.endswith(',R'):
+            return 0x3  # Relativo
+        else:
+            return 0x1  # Direto
 
     def fetch(self):
         """Busca a instrução na memória."""
@@ -72,19 +240,30 @@ class CPU:
         # TODO: Implementar a lógica de atualização das flags
         pass  # Por enquanto, não faz nada
 
+
 # Exemplo de uso:
 cpu = CPU()
 assembly_code = """
-; Exemplo de código assembly
-#30 ; Carrega o valor 30H na memória
-#5B ; Carrega o valor 5BH na memória
-#00 ; Carrega o valor 00H na memória
-#93 ; Carrega o valor 93H na memória
+.CODE #00
+START: LDA DATA1
+       ADD DATA2
+       STA RESULT
+       HLT
+.ENDCODE
+
+.DATA #90
+DATA1: DB #10
+DATA2: DB #20
+RESULT: DB #00
+.ENDDATA
 """
 if cpu.load_program(assembly_code):
     print("Programa carregado com sucesso!")
+    print(cpu.symbols)  # Imprime a tabela de símbolos
+    print(cpu.memory[0:10])  # Imprime os primeiros 10 bytes da memória
     # Teste simples de fetch
+    cpu.pc = 0  # Reinicia o PC
     instruction = cpu.fetch()
     print(f"Instrução buscada: {instruction:02X}")
-
-
+else:
+    print("Erro ao carregar o programa.")
