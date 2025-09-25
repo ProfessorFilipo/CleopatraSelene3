@@ -1,24 +1,23 @@
 #################################################################
 ####             C L E O P A T R A    S E L E N E            ####
-####                           versão 3.0                    ####
+####                         versão 3.0                      ####
 #################################################################
 #### Prof. Filipo Mor - github.com/ProfessorFilipo           ####
 #################################################################
 
 class CPU:
     def __init__(self):
-        self.memory = [0] * 256  # 256 bytes de memória
-        self.ac = 0  # Acumulador
-        self.pc = 0  # Contador de Programa
-        self.rs = 0  # Registrador de Subrotina
+        self.memory = [0] * 256
+        self.ac = 0
+        self.pc = 0
+        self.rs = 0
         self.carry = 0
         self.overflow = 0
         self.negative = 0
         self.zero = 0
-        self.symbols = {}  # Tabela de símbolos
+        self.symbols = {}
 
     def reset(self):
-        """Reseta o estado da CPU."""
         self.memory = [0] * 256
         self.ac = 0
         self.pc = 0
@@ -30,16 +29,21 @@ class CPU:
         self.symbols = {}
 
     def load_program(self, assembly_code):
-        """Monta o código assembly e carrega na memória (duas passagens)."""
-
-        # Primeira Passagem: Coletar rótulos
         address = 0
         code_mode = False
         data_mode = False
 
+        # Primeira Passagem: Coletar rótulos
         for line_number, line in enumerate(assembly_code.splitlines(), 1):
             line = line.strip()
-            if not line or line.startswith(';'):
+
+            # Remove comentários
+            comment_start = line.find(';')
+            if comment_start != -1:
+                line = line[:comment_start].strip()
+
+            # Ignora linhas vazias
+            if not line:
                 continue
 
             parts = line.split()
@@ -47,18 +51,20 @@ class CPU:
             instruction = None
             operand = None
 
-            if len(parts) >= 1 and parts[0].endswith(':'):
-                label = parts[0][:-1]
-                if len(parts) > 1:
-                    instruction = parts[1]
-                    if len(parts) > 2:
-                        operand = parts[2]
-                else:
-                    instruction = None
-            elif len(parts) >= 1:
+            # Rótulo é a primeira coisa na linha, se houver
+            if len(parts) > 0 and parts[0].endswith(':'):
+                label = parts[0][:-1]  # Remove os dois pontos
+                self.symbols[label] = address
+                parts = parts[1:]  # Remove o rótulo da lista
+
+            # Instrução é a próxima coisa, se houver
+            if len(parts) > 0:
                 instruction = parts[0]
-                if len(parts) > 1:
-                    operand = parts[1]
+                parts = parts[1:]
+
+            # Operando é o que sobrar, se houver
+            if len(parts) > 0:
+                operand = parts[0]
 
             if instruction == '.CODE':
                 code_address = int(operand[1:], 16) if operand else 0
@@ -83,13 +89,10 @@ class CPU:
             elif instruction == 'ORG':
                 address = int(operand[1:], 16)
             elif instruction == 'DB':
-                if label:
-                    self.symbols[label] = address  # Define rótulo para DB
-                address += 1
+                address += 1  # Incrementa o endereço, mesmo que não haja rótulo
+
             elif instruction:
-                if label:
-                    self.symbols[label] = address  # Define rótulo para instruções
-                address += 2 if operand else 1
+                address += 2 if operand else 1  # Incrementa para outras instruções
 
         # Segunda Passagem: Gerar código de máquina
         address = 0
@@ -98,7 +101,14 @@ class CPU:
 
         for line_number, line in enumerate(assembly_code.splitlines(), 1):
             line = line.strip()
-            if not line or line.startswith(';'):
+
+            # Remove comentários
+            comment_start = line.find(';')
+            if comment_start != -1:
+                line = line[:comment_start].strip()
+
+            # Ignora linhas vazias
+            if not line:
                 continue
 
             parts = line.split()
@@ -106,18 +116,19 @@ class CPU:
             instruction = None
             operand = None
 
-            if len(parts) >= 1 and parts[0].endswith(':'):
-                label = parts[0][:-1]
-                if len(parts) > 1:
-                    instruction = parts[1]
-                    if len(parts) > 2:
-                        operand = parts[2]
-                else:
-                    instruction = None
-            elif len(parts) >= 1:
+            # Rótulo é a primeira coisa na linha, se houver
+            if len(parts) > 0 and parts[0].endswith(':'):
+                label = parts[0][:-1]  # Remove os dois pontos
+                parts = parts[1:]  # Remove o rótulo da lista
+
+            # Instrução é a próxima coisa, se houver
+            if len(parts) > 0:
                 instruction = parts[0]
-                if len(parts) > 1:
-                    operand = parts[1]
+                parts = parts[1:]
+
+            # Operando é o que sobrar, se houver
+            if len(parts) > 0:
+                operand = parts[0]
 
             if instruction == '.CODE':
                 code_address = int(operand[1:], 16) if operand else 0
@@ -137,15 +148,21 @@ class CPU:
                 address = int(operand[1:], 16)
             elif instruction == 'DB':
                 try:
-                    value = int(operand[1:], 16) if operand and operand.startswith('#') else self.symbols.get(operand)
-                    if value is None:
-                        print(f"Erro na linha {line_number}: Rótulo não definido: {operand}")
+                    if operand:
+                        value = int(operand[1:], 16) if operand.startswith('#') else self.symbols.get(operand)
+                        if value is None:
+                            print(f"Erro na linha {line_number}: Rótulo não definido: {operand}")
+                            return False
+                        self.memory[address] = value & 0xFF
+                    else:
+                        print(f"Erro na linha {line_number}: DB sem operando.")
                         return False
-                    self.memory[address] = value & 0xFF
                     address += 1
+
                 except ValueError:
                     print(f"Erro na linha {line_number}: Valor inválido: {operand}")
                     return False
+
             elif instruction:
                 if not code_mode:
                     print(f"Erro na linha {line_number}: Instrução fora da seção .CODE.")
@@ -183,6 +200,7 @@ class CPU:
                             return False
                         self.memory[address] = value & 0xFF
                         address += 1
+
                     except ValueError:
                         print(f"Erro na linha {line_number}: Valor inválido: {operand}")
                         return False
@@ -197,7 +215,6 @@ class CPU:
         return True
 
     def get_opcode(self, instruction):
-        """Retorna o opcode da instrução."""
         opcodes = {
             "NOT": 0x0, "STA": 0x1, "LDA": 0x2, "ADD": 0x3,
             "OR": 0x4, "AND": 0x5, "JMP": 0x8, "JC": 0x9,
@@ -207,7 +224,6 @@ class CPU:
         return opcodes.get(instruction)
 
     def get_addressing_mode(self, operand):
-        """Retorna o modo de endereçamento do operando."""
         if operand is None:
             return None
         if operand.startswith('#'):
@@ -220,49 +236,50 @@ class CPU:
             return 0x1  # Direto
 
     def fetch(self):
-        """Busca a instrução na memória."""
         instruction = self.memory[self.pc]
         self.pc += 1
         return instruction
 
     def decode(self, instruction):
-        """Decodifica a instrução."""
-        # TODO: Implementar a lógica de decodificação
-        return instruction  # Por enquanto, retorna a instrução original
+        return instruction
 
     def execute(self, instruction):
-        """Executa a instrução."""
-        # TODO: Implementar a lógica de execução para cada instrução
-        pass  # Por enquanto, não faz nada
+        pass
 
     def update_flags(self, result):
-        """Atualiza as flags."""
-        # TODO: Implementar a lógica de atualização das flags
-        pass  # Por enquanto, não faz nada
+        pass
 
 
 # Exemplo de uso:
 cpu = CPU()
 assembly_code = """
-.CODE #00
-START: LDA DATA1
-       ADD DATA2
-       STA RESULT
-       HLT
-.ENDCODE
+; Exemplo de programa para testar o simulador CLEÓPATRA 3.0
 
-.DATA #90
-DATA1: DB #10
-DATA2: DB #20
-RESULT: DB #00
-.ENDDATA
+.CODE #00      ; Início da seção de código no endereço 0x00
+START:  LDA  DATA1     ; Carrega o valor de DATA1 no acumulador
+        ADD  DATA2     ; Adiciona o valor de DATA2 ao acumulador
+        STA  RESULT    ; Armazena o resultado (acumulador) em RESULT
+        LDA  RESULT    ; Carrega o valor de RESULT de volta no acumulador
+        AND  #0F       ; Aplica um "E" lógico com o valor 0x0F
+        STA  RESULT    ; Armazena o resultado em RESULT
+        LDA  RESULT
+        OR   #F0
+        STA RESULT
+        JMP  END       ; Desvia para o rótulo END
+END:    HLT          ; Encerra a execução do programa
+.ENDCODE    ; Fim da seção de código
+
+.DATA #90      ; Início da seção de dados no endereço 0x90
+DATA1:  DB  #15     ; Define o byte DATA1 com o valor 0x15 (21 decimal)
+DATA2:  DB  #2A     ; Define o byte DATA2 com o valor 0x2A (42 decimal)
+RESULT: DB  #00     ; Define o byte RESULT com o valor inicial 0x00
+.ENDDATA    ; Fim da seção de dados
 """
 if cpu.load_program(assembly_code):
     print("Programa carregado com sucesso!")
-    print(cpu.symbols)  # Imprime a tabela de símbolos
-    print(cpu.memory[0:10])  # Imprime os primeiros 10 bytes da memória
-    # Teste simples de fetch
-    cpu.pc = 0  # Reinicia o PC
+    print(cpu.symbols)
+    print(cpu.memory[0:16])
+    cpu.pc = 0
     instruction = cpu.fetch()
     print(f"Instrução buscada: {instruction:02X}")
 else:
