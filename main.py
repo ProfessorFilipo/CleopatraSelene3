@@ -28,6 +28,23 @@ class CPU:
         self.zero = 0
         self.symbols = {}
 
+    def getMemoryMap(self, posIni=0, posFin=255):
+        buffer = ''
+        pos = 0
+        for _ in range(posIni, posFin + 1):
+            memPos = self.memory[pos]
+            buffer += f'{pos:0>{2}X} :: {memPos:0>{2}X} ({memPos:0>3})\n'
+            pos += 1
+        return buffer
+
+    def getSymbolsTable(self):
+        buffer = ''
+        maiorSimbolo = max(self.symbols, key=len)
+        for chave, valor in self.symbols.items():
+            buffer += f'{chave:>{len(maiorSimbolo)}}: {valor:0>{2}X} ({valor:0>3})\n'
+        return buffer
+
+
     def load_program(self, assembly_code):
         """Monta o código assembly e carrega na memória."""
         address = 0
@@ -490,13 +507,15 @@ assembly_code = """
 ; Exemplo de programa para testar o simulador CLEÓPATRA 3.0
 
 .CODE #00      ; Início da seção de código no endereço 0x00
-START:  LDA  A     
-        ADD  B     
+START:  LDA  B
+        NOT
+        ADD  #1
+        ADD  A     
         STA  C    
 END:    HLT          ; Encerra a execução do programa
 .ENDCODE    ; Fim da seção de código
 
-.DATA #90      ; Início da seção de dados no endereço 0x90
+.DATA #0A      ; Início da seção de dados no endereço 0x90
    A:  DB  #05     
    B:  DB  #04     
    C:  DB  #00
@@ -504,9 +523,9 @@ END:    HLT          ; Encerra a execução do programa
 .ENDDATA    ; Fim da seção de dados
 """
 if cpu.load_program(assembly_code):
-    print("Programa carregado com sucesso!")
-    print("Tabela de símbolos:", cpu.symbols)
-    print("Memória:", cpu.memory[0:32])
+    print("Programa carregado com sucesso!\n ::: Log de Execução:\n")
+    #print("Tabela de símbolos:", cpu.symbols)
+    #print("Memória:", cpu.memory[0:32])
 
     cpu.pc = 0  # Define o PC para o início do código
     while True:  # Executa o programa até o HLT
@@ -514,6 +533,10 @@ if cpu.load_program(assembly_code):
         print(f"PC: {cpu.pc:02X} AC: {cpu.ac:02X} N: {cpu.negative} Z: {cpu.zero} C: {cpu.carry} V: {cpu.overflow}")
         if not continue_execution:
             break
+
+    print(f"Tabela de Simbolos:\n{cpu.getSymbolsTable()}")
+    print(f"Mapa de Memoria: \n{cpu.getMemoryMap(0, 20)}")
+    #print("Memória (fim da execução):", cpu.memory[0:32])
 
     print("Fim da execução.")
 else:
