@@ -500,6 +500,7 @@ END:    HLT          ; Encerra a execução do programa
    A:  DB  #05     
    B:  DB  #04     
    C:  DB  #00
+   D:  DB  #FE
 .ENDDATA    ; Fim da seção de dados
 """
 if cpu.load_program(assembly_code):
